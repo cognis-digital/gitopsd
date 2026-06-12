@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -240,11 +241,27 @@ def _flatten(d: Any, prefix: str = "") -> Dict[str, Any]:
     return out
 
 
-def diff_resource(desired: Dict[str, Any], live: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Return field-level changes needed to bring live -> desired."""
+def _ignored(path: str, ignore: Optional[List[str]]) -> bool:
+    """True if a flattened field path matches any ignore glob (fnmatch)."""
+    if not ignore:
+        return False
+    import fnmatch
+    return any(fnmatch.fnmatch(path, pat) for pat in ignore)
+
+
+def diff_resource(desired: Dict[str, Any], live: Dict[str, Any],
+                  ignore: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+    """Return field-level changes needed to bring live -> desired.
+
+    ``ignore`` is a list of fnmatch globs over flattened field paths (e.g.
+    ``spec.replicas`` or ``metadata.annotations.*``) that are treated as
+    intentional and excluded from drift.
+    """
     df, lf = _flatten(_normalize(desired)), _flatten(_normalize(live))
     changes = []
     for k in sorted(set(df) | set(lf)):
+        if _ignored(k, ignore):
+            continue
         if k not in lf:
             changes.append({"path": k, "op": "add", "to": df[k]})
         elif k not in df:
@@ -254,13 +271,46 @@ def diff_resource(desired: Dict[str, Any], live: Dict[str, Any]) -> List[Dict[st
     return changes
 
 
+def _to_jsonpointer(flat_path: str) -> str:
+    """Convert a flattened path (a.b[0].c) to an RFC-6901 JSON Pointer (/a/b/0/c)."""
+    out = []
+    for seg in re.split(r"\.", flat_path):
+        m = re.match(r"^(.*?)((?:\[\d+\])*)$", seg)
+        name, idxs = m.group(1), m.group(2)
+        if name:
+            out.append(name.replace("~", "~0").replace("/", "~1"))
+        for idx in re.findall(r"\[(\d+)\]", idxs):
+            out.append(idx)
+    return "/" + "/".join(out)
+
+
+def to_json_patch(changes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Render field changes as an RFC-6902 JSON Patch (add/remove/replace)."""
+    patch = []
+    for c in changes:
+        ptr = _to_jsonpointer(c["path"])
+        if c["op"] == "add":
+            patch.append({"op": "add", "path": ptr, "value": c["to"]})
+        elif c["op"] == "remove":
+            patch.append({"op": "remove", "path": ptr})
+        else:
+            patch.append({"op": "replace", "path": ptr, "value": c["to"]})
+    return patch
+
+
 # --------------------------------------------------------------------------- #
 # Drift report + reconcile plan
 # --------------------------------------------------------------------------- #
 
 def detect_drift(desired_path: str, live_path: str,
-                 prune: bool = False) -> Dict[str, Any]:
-    """Compare desired vs live state directories/snapshots."""
+                 prune: bool = False,
+                 ignore: Optional[List[str]] = None) -> Dict[str, Any]:
+    """Compare desired vs live state directories/snapshots.
+
+    ``ignore`` is a list of fnmatch globs over flattened field paths that are
+    treated as intentional (e.g. ``spec.replicas`` when an HPA owns scaling).
+    Each drifted resource also carries a ready-to-apply RFC-6902 ``patch``.
+    """
     desired = load_state_dir(desired_path)
     live = load_state_dir(live_path)
 
@@ -269,9 +319,10 @@ def detect_drift(desired_path: str, live_path: str,
     drifted = []
     in_sync = []
     for key in sorted(set(desired) & set(live)):
-        changes = diff_resource(desired[key], live[key])
+        changes = diff_resource(desired[key], live[key], ignore=ignore)
         if changes:
-            drifted.append({"key": key, "changes": changes})
+            drifted.append({"key": key, "changes": changes,
+                            "patch": to_json_patch(changes)})
         else:
             in_sync.append(key)
 
@@ -286,6 +337,13 @@ def detect_drift(desired_path: str, live_path: str,
             plan.append({"action": "delete", "key": key,
                          "reason": "not declared (prune)"})
 
+    # A 0..100 drift score: fraction of shared+declared resources that are clean.
+    total = len(desired) | 0
+    considered = len(in_sync) + len(drifted) + len(missing)
+    clean = len(in_sync)
+    score = round(100.0 * clean / considered, 1) if considered else 100.0
+    changed_fields = sum(len(d["changes"]) for d in drifted)
+
     return {
         "desired_count": len(desired),
         "live_count": len(live),
@@ -294,6 +352,8 @@ def detect_drift(desired_path: str, live_path: str,
         "drifted": drifted,
         "in_sync": in_sync,
         "synced": not missing and not drifted and (not extra or not prune),
+        "drift_score": score,
+        "changed_fields": changed_fields,
         "plan": plan,
     }
 

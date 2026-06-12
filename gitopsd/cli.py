@@ -25,6 +25,8 @@ def _build_parser() -> argparse.ArgumentParser:
     d.add_argument("live", help="Directory/file or snapshot of live state.")
     d.add_argument("--prune", action="store_true",
                    help="Treat undeclared live resources as drift (deletable).")
+    d.add_argument("--ignore", action="append", default=[], metavar="GLOB",
+                   help="Field-path glob to ignore (repeatable), e.g. spec.replicas")
     d.add_argument("--format", choices=("table", "json"), default="table")
     d.add_argument("--fail-on-drift", action="store_true",
                    help="Exit non-zero if any drift is detected.")
@@ -33,7 +35,13 @@ def _build_parser() -> argparse.ArgumentParser:
     pl.add_argument("desired")
     pl.add_argument("live")
     pl.add_argument("--prune", action="store_true")
+    pl.add_argument("--ignore", action="append", default=[], metavar="GLOB")
     pl.add_argument("--format", choices=("table", "json"), default="table")
+
+    pt = sub.add_parser("patch", help="Emit RFC-6902 JSON Patches for drifted resources.")
+    pt.add_argument("desired")
+    pt.add_argument("live")
+    pt.add_argument("--ignore", action="append", default=[], metavar="GLOB")
 
     sub.add_parser("mcp", help="Run as an MCP server (stdio JSON-RPC).")
     return p
@@ -63,14 +71,16 @@ def _render(report) -> str:
                     lines.append(f"        - {c['path']}")
     lines.append("-" * 60)
     lines.append(f"  in-sync: {len(report['in_sync'])}   "
-                 f"plan steps: {len(report['plan'])}")
+                 f"plan steps: {len(report['plan'])}   "
+                 f"drift score: {report.get('drift_score', 100)}/100")
     lines.append("RESULT: " + ("IN SYNC" if report["synced"] else "DRIFT DETECTED"))
     return "\n".join(lines)
 
 
 def _run_diff(a) -> int:
     try:
-        report = detect_drift(a.desired, a.live, prune=a.prune)
+        report = detect_drift(a.desired, a.live, prune=a.prune,
+                              ignore=a.ignore or None)
     except (OSError, GitopsError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -85,7 +95,8 @@ def _run_diff(a) -> int:
 
 def _run_plan(a) -> int:
     try:
-        report = detect_drift(a.desired, a.live, prune=a.prune)
+        report = detect_drift(a.desired, a.live, prune=a.prune,
+                              ignore=a.ignore or None)
     except (OSError, GitopsError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -95,6 +106,17 @@ def _run_plan(a) -> int:
         print(f"gitopsd reconcile plan — {len(report['plan'])} step(s)")
         for step in report["plan"]:
             print(f"  {step['action']:<7} {step['key']}   ({step['reason']})")
+    return 0
+
+
+def _run_patch(a) -> int:
+    try:
+        report = detect_drift(a.desired, a.live, ignore=a.ignore or None)
+    except (OSError, GitopsError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    out = {d["key"]: d["patch"] for d in report["drifted"]}
+    print(json.dumps(out, indent=2))
     return 0
 
 
@@ -111,6 +133,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         return _run_diff(args)
     if args.command == "plan":
         return _run_plan(args)
+    if args.command == "patch":
+        return _run_patch(args)
     if args.command == "mcp":
         return _run_mcp()
     parser.print_help(sys.stderr)
