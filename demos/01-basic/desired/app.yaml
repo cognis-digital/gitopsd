@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: default
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+        - name: web
+          image: localhost:5000/web:1.2.0
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: default
+spec:
+  ports:
+    - port: 80
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: web-config
+  namespace: default
+data:
+  LOG_LEVEL: info
