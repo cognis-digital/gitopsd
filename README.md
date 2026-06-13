@@ -56,3 +56,13 @@ python -m pytest -q     # or: python -m unittest discover -s tests
 Cognis Open Collaboration License (COCL) 1.0 — see [`LICENSE`](LICENSE).
 © 2026 Cognis Digital LLC. Original Cognis work; no third-party code, names, or
 branding.
+
+<!-- cognis:domains:start -->
+## Domains
+
+**Primary domain:** Intelligence & OSINT  ·  **JTF MERIDIAN division:** NULLBYTE · BLACK CELL
+
+**Topics:** `cognis` `osint` `intelligence` `recon` `kubernetes`
+
+Part of the **Cognis Neural Suite** — 300+ source-available tools organized across 12 domains under the JTF MERIDIAN command structure. See the [suite on GitHub](https://github.com/cognis-digital) and [jtf-meridian](https://github.com/cognis-digital/jtf-meridian) for how the pieces fit together.
+<!-- cognis:domains:end -->
