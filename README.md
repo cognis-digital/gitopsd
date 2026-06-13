@@ -66,3 +66,31 @@ branding.
 
 Part of the **Cognis Neural Suite** — 300+ source-available tools organized across 12 domains under the JTF MERIDIAN command structure. See the [suite on GitHub](https://github.com/cognis-digital) and [jtf-meridian](https://github.com/cognis-digital/jtf-meridian) for how the pieces fit together.
 <!-- cognis:domains:end -->
+
+## Usage — step by step
+
+`gitopsd` diffs declared Kubernetes manifests against a live-state snapshot and emits a drift report plus a reconcile plan — no cluster access of its own.
+
+1. **Install** (pure stdlib, Python 3.10+):
+   ```bash
+   pip install "git+https://github.com/cognis-digital/gitopsd.git"
+   ```
+2. **Snapshot live state** with kubectl, then diff it against your manifests (`--prune` flags undeclared live resources, `--ignore` skips field globs):
+   ```bash
+   kubectl get deploy,svc -o json > live-snapshot.json
+   gitopsd diff ./manifests ./live-snapshot.json --prune --ignore spec.replicas
+   ```
+3. **Get just the reconcile plan** (ordered apply/delete steps):
+   ```bash
+   gitopsd plan ./manifests ./live-snapshot.json --prune
+   ```
+4. **Use the output** — `--format json` for tooling, or RFC-6902 patches for the drifted resources:
+   ```bash
+   gitopsd diff ./manifests ./live-snapshot.json --format json
+   gitopsd patch ./manifests ./live-snapshot.json
+   ```
+5. **Gate CI** — `--fail-on-drift` exits non-zero whenever live differs from git:
+   ```bash
+   gitopsd diff ./manifests ./live-snapshot.json --fail-on-drift
+   ```
+   Or run it as a local MCP server (stdio JSON-RPC): `gitopsd mcp`.
