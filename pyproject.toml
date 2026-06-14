@@ -34,3 +34,6 @@ gitopsd = "gitopsd.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["gitopsd"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
