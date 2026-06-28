@@ -1,0 +1,3 @@
+$ gitopsd-emit --version
+
+gitopsd 0.1.0

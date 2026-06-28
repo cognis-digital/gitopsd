@@ -1,0 +1,17 @@
+$ gitopsd-emit --help
+
+usage: gitopsd [-h] [--version] {diff,plan,patch,mcp} ...
+
+GitOps drift detection — diff declared manifests against live cluster state
+and emit a reconcile plan.
+
+positional arguments:
+  {diff,plan,patch,mcp}
+    diff                Report drift between desired and live state.
+    plan                Print only the reconcile plan.
+    patch               Emit RFC-6902 JSON Patches for drifted resources.
+    mcp                 Run as an MCP server (stdio JSON-RPC).
+
+options:
+  -h, --help            show this help message and exit
+  --version             show program's version number and exit

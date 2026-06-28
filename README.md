@@ -9,6 +9,63 @@ access of its own, so it runs in CI and in air-gapped review workflows.
 
 ---
 
+
+<!-- cognis:example:start -->
+## 🔎 Example output
+
+Real, reproducible output from the tool — runs offline:
+
+```console
+$ gitopsd-emit --version
+gitopsd 0.1.0
+```
+
+```console
+$ gitopsd-emit --help
+usage: gitopsd [-h] [--version] {diff,plan,patch,mcp} ...
+
+GitOps drift detection — diff declared manifests against live cluster state
+and emit a reconcile plan.
+
+positional arguments:
+  {diff,plan,patch,mcp}
+    diff                Report drift between desired and live state.
+    plan                Print only the reconcile plan.
+    patch               Emit RFC-6902 JSON Patches for drifted resources.
+    mcp                 Run as an MCP server (stdio JSON-RPC).
+
+options:
+  -h, --help            show this help message and exit
+  --version             show program's version number and exit
+```
+
+> Blocks above are real `gitopsd` output — reproduce them from a clone.
+
+**Sample result format** _(illustrative values — run on your own data for real findings):_
+
+```
+{
+"findings": [
+    {
+        "id": "1234567890",
+        "title": "Suspicious Network Activity",
+        "description": "Anomalous network traffic detected from IP 192.168.1.100",
+        "severity": "high",
+        "created_at": "2023-02-15T14:30:00Z"
+    },
+    {
+        "id": "2345678901",
+        "title": "Unusual File Access",
+        "description": "File access detected from user 'john' to file '/path/to/sensitive/data'",
+        "severity": "medium",
+        "created_at": "2023-02-15T14:35:00Z"
+    }
+]
+}
+```
+
+<!-- cognis:example:end -->
+
 ## Why
 
 GitOps is becoming the default way teams run Kubernetes, but you don't always
